@@ -1,0 +1,49 @@
+version: '3.7'
+services:
+  mariadb:
+    container_name: call-media-mariadb
+    image: mariadb
+    environment:
+      - MARIADB_ROOT_PASSWORD=root
+      - MARIADB_USER=main_backend
+      - MARIADB_PASSWORD=main_backend
+      - MARIADB_DATABASE=call_media
+    ports:
+      - 3306:3306
+
+  app:
+    image: call-media-app
+    container_name: call-media-app
+    build: docker/app
+    ports:
+      - 8080:8080
+    depends_on:
+      - mariadb
+      - message-broker
+    volumes:
+      - ./.bin/:/root/
+    environment:
+      - DATABASE_URL=main_backend:main_backend@tcp(call-media-mariadb:3306)/call_media
+      - AMQP_URL=amqp://guest:guest@call-media-message-broker:5672/
+
+  message-broker:
+    image: rabbitmq:3-management-alpine
+    container_name: call-media-message-broker
+    ports:
+      - 5672:5672
+      - 15672:15672
+    restart: always
+
+  supervisord:
+    container_name: call-media-supervisord
+    build: docker/supervisord
+    depends_on:
+      - mariadb
+      - message-broker
+    volumes:
+      - ./.bin/:/root/
+      - ./docker/supervisord/conf.d/:/etc/supervisor/conf.d/
+    environment:
+      - DATABASE_URL=main_backend:main_backend@tcp(call-media-mariadb:3306)/call_media
+      - AMQP_URL=amqp://guest:guest@call-media-message-broker:5672/
+      - REPEAT_REQUEST_URL=http://call-media-app:8080/request/repeat?id=
